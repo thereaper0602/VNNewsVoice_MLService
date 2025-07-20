@@ -72,8 +72,13 @@ class CrawlRssRequest(BaseModel):
         return v
 
 class SummarizeRequest(BaseModel):
-    content: str
-    max_length: Optional[int] = 200
+    content: str = Field(..., min_length=50, description="Text content to summarize")
+    max_length: Optional[int] = Field(default=200, ge=50, le=500, description="Maximum summary length")
+
+class SummarizeArticleRequest(BaseModel):
+    url: HttpUrl
+    generator: Optional[str] = None
+    max_summary_length: Optional[int] = Field(default=200, ge=50, le=500)
 
 class APIResponse(BaseModel):
     success: bool

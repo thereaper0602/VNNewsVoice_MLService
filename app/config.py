@@ -1,6 +1,12 @@
-from pydantic_settings import BaseSettings  # Đổi import này
+# app/config.py - Sửa lại hoàn toàn
+from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
+from pathlib import Path
+
+# Get the parent directory (root of project)
+ROOT_DIR = Path(__file__).parent.parent
+ENV_FILE = ROOT_DIR / ".env"
 
 class Settings(BaseSettings):
     # App
@@ -12,16 +18,42 @@ class Settings(BaseSettings):
     # Crawler
     CRAWL_INTERVAL_MINUTES: int = 5
     MAX_ARTICLES_PER_CRAWL: int = 5
-    RATE_LIMIT_SECONDS: int = 2  # Giảm xuống 2s cho nhanh hơn
+    RATE_LIMIT_SECONDS: int = 2
 
     # Logging
     LOG_LEVEL: str = "INFO"
 
+    # AI Keys
+    GOOGLE_AI_API_KEY: Optional[str] = None
+
     # Allowed hosts for CORS
-    ALLOWED_HOSTS: List[str] = ["*"]  # Đơn giản hóa
+    ALLOWED_HOSTS: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000", 
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "*"
+    ]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        # Debug path information
+        print(f"📁 Current working dir: {os.getcwd()}")
+        print(f"📁 Root project dir: {ROOT_DIR}")
+        print(f"📄 .env file path: {ENV_FILE}")
+        print(f"📄 .env exists: {ENV_FILE.exists()}")
+        
+        # Check if API key loaded
+        if self.GOOGLE_AI_API_KEY:
+            print(f"✅ GOOGLE_AI_API_KEY loaded: {self.GOOGLE_AI_API_KEY[:20]}...{self.GOOGLE_AI_API_KEY[-4:]}")
+        else:
+            print("❌ GOOGLE_AI_API_KEY not loaded!")
 
     class Config:
-        env_file = ".env"
+        env_file = str(ENV_FILE)  # Đường dẫn tuyệt đối tới .env
         env_file_encoding = "utf-8"
         case_sensitive = True
 
