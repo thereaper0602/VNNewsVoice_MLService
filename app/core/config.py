@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 # Get the parent directory (root of project)
-ROOT_DIR = Path(__file__).parent.parent
+ROOT_DIR = Path(__file__).parent.parent.parent
 ENV_FILE = ROOT_DIR / ".env"
 
 class Settings(BaseSettings):
@@ -25,6 +25,11 @@ class Settings(BaseSettings):
 
     # AI Keys
     GOOGLE_AI_API_KEY: Optional[str] = None
+
+    # Cloudinary configuration
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
 
     # Allowed hosts for CORS
     ALLOWED_HOSTS: List[str] = [
@@ -51,6 +56,12 @@ class Settings(BaseSettings):
             print(f"✅ GOOGLE_AI_API_KEY loaded: {self.GOOGLE_AI_API_KEY[:20]}...{self.GOOGLE_AI_API_KEY[-4:]}")
         else:
             print("❌ GOOGLE_AI_API_KEY not loaded!")
+
+        # Check Cloudinary config
+        if all([self.CLOUDINARY_CLOUD_NAME, self.CLOUDINARY_API_KEY, self.CLOUDINARY_API_SECRET]):
+            print(f"☁️ Cloudinary config loaded: {self.CLOUDINARY_CLOUD_NAME}")
+        else:
+            print("⚠️ Cloudinary credentials not found")
 
     class Config:
         env_file = str(ENV_FILE)  # Đường dẫn tuyệt đối tới .env

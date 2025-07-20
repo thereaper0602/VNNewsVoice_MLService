@@ -1,29 +1,7 @@
 from pydantic import BaseModel, HttpUrl, Field, field_validator
-from typing import Optional, List, Union
+from typing import Optional, Union
 from datetime import datetime
 import pytz
-
-class ArticleBlock(BaseModel):
-    order: int
-    type: str
-    content: Optional[str] = None
-    text: Optional[str] = None
-    tag: Optional[str] = None
-    src: Optional[str] = None
-    alt: Optional[str] = None
-    caption: Optional[str] = None
-
-class Article(BaseModel):
-    title: str
-    url: HttpUrl
-    published_at: Optional[datetime] = None
-    blocks: List[ArticleBlock]
-    
-    model_config = {
-        "json_encoders": {
-            datetime: lambda v: v.isoformat() if v else None
-        }
-    }
 
 class CrawlArticleRequest(BaseModel):
     url: HttpUrl
@@ -79,8 +57,3 @@ class SummarizeArticleRequest(BaseModel):
     url: HttpUrl
     generator: Optional[str] = None
     max_summary_length: Optional[int] = Field(default=200, ge=50, le=500)
-
-class APIResponse(BaseModel):
-    success: bool
-    data: Optional[List[dict]] = None
-    message: Optional[str] = None
