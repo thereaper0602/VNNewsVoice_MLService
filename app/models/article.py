@@ -18,6 +18,7 @@ class Article(BaseModel):
     url: HttpUrl
     published_at: Optional[datetime] = None
     blocks: List[ArticleBlock]
+    top_image: Optional[str] = None
     
     model_config = {
         "json_encoders": {

@@ -68,7 +68,7 @@ class NewsService:
         return None
 
     @staticmethod
-    def crawl_news_article(article_url: str, generator: Optional[str] = None) -> tuple[str, List[ArticleBlock]]:
+    def crawl_news_article(article_url: str, generator: Optional[str] = None) -> tuple[str, str, List[ArticleBlock]]:
         response = requests.get(article_url, headers=headers, timeout=10)
         response.raise_for_status()
 
@@ -125,6 +125,8 @@ class NewsService:
         order = 1
         seen_paragraphs = set()
         seen_figcaptions = set()
+        first_image = ""
+        is_first_image = True
 
         for elem in container.find_all(['p', 'h1', 'h2', 'h3', 'figure','picture'], recursive=True):
             block_data = {"order": order}
@@ -156,7 +158,6 @@ class NewsService:
                 img_tag = elem.find('img')
                 if img_tag:
                     block_data['type'] = 'image'
-                    
                     # Try different src attributes
                     src = None
                     for attr in ['data-src', 'data-original', 'src']:
@@ -171,6 +172,9 @@ class NewsService:
                     
                     block_data['src'] = src or ''
                     block_data['alt'] = img_tag.get('alt', '')
+                    if is_first_image and block_data['src']:
+                        first_image = block_data['src']
+                        is_first_image = False
                     
                     # Extract caption
                     caption_tag = elem.find('figcaption') or elem.find('p', class_='Image')
@@ -194,9 +198,9 @@ class NewsService:
             ):
                 blocks.append(ArticleBlock(**block_data))
                 order += 1
-                
-        return title, blocks
-    
+
+        return title, first_image, blocks
+
     @staticmethod
     def get_rss_feed(rss_url: str, max_articles: int = 5, last_crawl_time: Optional[datetime] = None) -> List[Article]:
         try:
@@ -264,7 +268,7 @@ class NewsService:
                             print(f"✅ INCLUDE: Article is newer ({published_date} > {parsed_last_crawl_time})")
                     
                     # Crawl article content
-                    title, blocks = NewsService.crawl_news_article(entry.link, generator=generator)
+                    title, first_image, blocks = NewsService.crawl_news_article(entry.link, generator=generator)
                     if not blocks:
                         print(f"❌ SKIP: No content extracted")
                         continue
@@ -273,6 +277,7 @@ class NewsService:
                     
                     article = Article(
                         title=final_title,
+                        top_image=first_image,
                         url=entry.link,
                         published_at=published_date,
                         blocks=blocks
