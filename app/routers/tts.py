@@ -3,7 +3,7 @@ from fastapi.responses import Response
 import urllib.parse
 
 from models.response import APIResponse
-from schemas.tts import TTSRequest, TTSResponse
+from schemas.tts import TTSRequest, TTSResponse, TTSDeleteByUrlRequest
 from services.tts_service import ArticleTTSService
 from services.cloud_service import CloudStorageService
 
@@ -98,3 +98,60 @@ async def get_available_voices():
         data=voices,
         message=f"Found {len(voices)} available voices"
     )
+
+
+# routers/tts.py - Enhanced delete endpoint
+
+@router.delete("/tts/delete-by-url", response_model=APIResponse)
+async def delete_tts_audio_by_url(request: dict):
+    """Delete audio file from cloud storage using URL"""
+    try:
+        audio_url = request.get("audio_url", "").strip()
+        
+        if not audio_url:
+            raise HTTPException(status_code=400, detail="Audio URL is required")
+        
+        # Method 1: Extract public ID and try variations
+        public_id = CloudStorageService.extract_public_id_from_url(audio_url)
+        
+        if public_id:
+            print(f"🔧 Method 1: Trying delete with extracted public_id: {public_id}")
+            success = CloudStorageService.delete_audio(public_id)
+            
+            if success:
+                return APIResponse(
+                    success=True,
+                    data=[{
+                        "audio_url": audio_url,
+                        "public_id": public_id,
+                        "deleted": True,
+                        "method": "extracted_public_id"
+                    }],
+                    message="Audio file deleted successfully"
+                )
+        
+        # Method 2: Search by filename pattern
+        filename = audio_url.split('/')[-1].split('.')[0]  # Get filename without extension
+        print(f"🔧 Method 2: Trying search and delete with filename: {filename}")
+        
+        success = CloudStorageService.search_and_delete_audio(filename)
+        
+        if success:
+            return APIResponse(
+                success=True,
+                data=[{
+                    "audio_url": audio_url,
+                    "public_id": filename,
+                    "deleted": True,
+                    "method": "search_and_delete"
+                }],
+                message="Audio file found and deleted successfully"
+            )
+        
+        # If both methods fail
+        raise HTTPException(status_code=404, detail="Audio file not found or delete failed")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting audio: {str(e)}")

@@ -38,11 +38,10 @@ async def summarize_content(request: SummarizeRequest):
 async def summarize_article_by_url(request: CrawlArticleRequest):
     """Crawl article and summarize in one step"""
     try:
-        title, blocks = NewsService.crawl_news_article(str(request.url), request.generator)
-        
+        title, top_image, blocks = NewsService.crawl_news_article(str(request.url), request.generator)
         if not blocks:
-            raise HTTPException(status_code=400, detail="Could not extract content from article")
-        
+            raise HTTPException(status_code=400, detail="Could not extract title, top image or content from article")
+
         article = Article(
             title=title,
             url=str(request.url),
