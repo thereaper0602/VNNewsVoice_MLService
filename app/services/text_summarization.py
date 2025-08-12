@@ -36,12 +36,19 @@ class ArticleSummarizationService:
         """Lazy load model để tránh chậm khởi động"""
         if cls._model is None:
             print("🤖 Loading ViT5 summarization model...")
-            cls._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            cls._device = torch.device("cpu")
             cls._tokenizer = AutoTokenizer.from_pretrained("VietAI/vit5-base-vietnews-summarization")
             cls._model = AutoModelForSeq2SeqLM.from_pretrained("VietAI/vit5-base-vietnews-summarization")
-            cls._model.to(cls._device)
-            cls._model.eval()  # Set to evaluation mode
-            print(f"✅ Model loaded on {cls._device}")
+            # Load quantized model
+            quantization_config = torch.quantization.quantize_dynamic(
+                {torch.nn.Linear}, dtype=torch.qint8
+            )
+            cls._model = AutoModelForSeq2SeqLM.from_pretrained(
+                "VietAI/vit5-base-vietnews-summarization",
+                device_map="auto",
+                quantization_config=quantization_config,
+                low_cpu_mem_usage=True
+            )
     
     @classmethod
     def chunk_text(cls, text: str, max_tokens: int = 512) -> List[str]:
