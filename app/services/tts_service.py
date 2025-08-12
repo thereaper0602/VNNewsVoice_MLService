@@ -21,6 +21,7 @@ import cloudinary
 import cloudinary.uploader
 import uuid
 import json
+from core.config import settings
 
 class ArticleTTSService:
     @staticmethod
@@ -30,6 +31,12 @@ class ArticleTTSService:
             wf.setsampwidth(sample_width)
             wf.setframerate(rate)
             wf.writeframes(pcm_data)
+            
+    @staticmethod
+    def test_tts_with_short_text() -> Optional[bytes]:
+        """Thử nghiệm TTS với đoạn văn bản ngắn để debug"""
+        short_text = "Đây là bản tin thời sự. Xin chào quý vị và các bạn."
+        return ArticleTTSService.generate_tts(short_text, "Zephyr")
 
     @staticmethod
     def generate_tts(text: str, voice_name: str = "Zephyr") -> Optional[bytes]:
@@ -39,7 +46,7 @@ class ArticleTTSService:
                 from dotenv import load_dotenv
                 load_dotenv(env_path, override=True)
             
-            api_key = os.getenv("GOOGLE_AI_API_KEY")
+            api_key = settings.GOOGLE_AI_API_KEY
             if not api_key:
                 raise ValueError("API key for Google AI is not set in environment variables")
             
@@ -96,55 +103,68 @@ class ArticleTTSService:
     
     @staticmethod
     def generate_tts_with_upload(text: str, voice_name: str = "Zephyr") -> Optional[dict]:
-        """Generate TTS audio and upload to Cloudinary, return URL and metadata"""
         try:
-            print(f"🎵 Starting TTS generation and upload for {len(text)} characters...")
+            # Load environment variables if not already loaded
+            env_path = Path(__file__).parent.parent.parent / ".env"
+            if env_path.exists():
+                from dotenv import load_dotenv
+                load_dotenv(env_path, override=True)
+                
+            # Configure Cloudinary
+            cloudinary.config(
+                cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+                api_key=os.getenv("CLOUDINARY_API_KEY"),
+                api_secret=os.getenv("CLOUDINARY_API_SECRET")
+            )
             
-            # Step 1: Generate TTS audio
+            # Log Cloudinary configuration status (without revealing secrets)
+            print(f"🔐 Cloudinary Config Check:")
+            print(f"   Cloud name: {os.getenv('CLOUDINARY_CLOUD_NAME', 'Not set')}")
+            print(f"   API key: {'Set' if os.getenv('CLOUDINARY_API_KEY') else 'Not set'}")
+            print(f"   API secret: {'Set' if os.getenv('CLOUDINARY_API_SECRET') else 'Not set'}")
+            
+            # Generate TTS
             audio_data = ArticleTTSService.generate_tts(text, voice_name)
-            
             if not audio_data:
-                print("❌ TTS generation failed")
                 return None
             
-            # Step 2: Upload to Cloudinary
-            filename = f"tts_{int(time.time())}_{voice_name.lower()}.wav"
-            from services.cloud_service import CloudStorageService
-            upload_result = CloudStorageService.upload_audio(audio_data, filename)
+            # 🔧 CREATE CONSISTENT PUBLIC ID
+            timestamp = int(time.time())
+            filename = f"tts_{timestamp}_{voice_name.lower()}"
             
-            if not upload_result:
-                print("❌ Cloud upload failed")
-                return None
+            # 🔧 SIMPLER FOLDER STRUCTURE
+            folder = "vnnews/audio"  # Single level thay vì nested
+            public_id = f"{folder}/{filename}"  # vnnews/audio/tts_1753688075_zephyr
             
-            # Step 3: Return comprehensive result
+            # Upload to Cloudinary
+            upload_result = cloudinary.uploader.upload(
+                audio_data,
+                public_id=public_id,
+                resource_type="raw",  # Important for audio files
+                folder=None,  # Don't auto-add folder since we handle in public_id
+                overwrite=True
+            )
+            
             result = {
                 "status": "success",
-                "audio_url": upload_result['audio_url'],
-                "public_id": upload_result['public_id'],
+                "audio_url": upload_result['secure_url'],
+                "public_id": upload_result['public_id'],  # 🔑 EXACT PUBLIC ID
                 "audio_size": len(audio_data),
-                "cloud_size": upload_result['bytes'],
                 "voice_name": voice_name,
                 "text_length": len(text),
-                "filename": filename,
-                "format": "wav",
+                "filename": f"{filename}.wav",
                 "upload_timestamp": datetime.now().isoformat(),
-                "cloud_provider": "cloudinary",
-                "cloudinary_info": {
-                    "created_at": upload_result.get('created_at'),
-                    "version": upload_result.get('version'),
-                    "resource_type": upload_result.get('resource_type')
-                }
+                "cloud_provider": "cloudinary"
             }
             
-            print(f"🎉 TTS + Upload completed successfully!")
-            print(f"🔗 Audio URL: {result['audio_url']}")
+            print(f"✅ Upload success:")
+            print(f"   URL: {result['audio_url']}")
+            print(f"   Public ID: {result['public_id']}")  # 🔑 LOG PUBLIC ID
             
             return result
             
         except Exception as e:
-            print(f"❌ TTS with upload error: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ TTS upload error: {e}")
             return None
 
     @staticmethod
