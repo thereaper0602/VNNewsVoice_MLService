@@ -267,8 +267,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import settings
-from routers import news, summarization, tts
+from app.core.config import settings
+from app.routers import news, summarization, tts
 
 # Create FastAPI app
 app = FastAPI(

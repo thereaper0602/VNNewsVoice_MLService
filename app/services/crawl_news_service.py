@@ -5,8 +5,8 @@ import feedparser
 import time
 from time import mktime
 # ✅ FIX: Import từ app.models thay vì models
-from models.article import Article, ArticleBlock
-from models.response import APIResponse
+from app.models.article import Article, ArticleBlock
+from app.models.response import APIResponse
 from typing import List, Optional, Union
 import pytz
 import re

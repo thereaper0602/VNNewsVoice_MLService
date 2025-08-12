@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
-from models.response import APIResponse
-from schemas.article import SummarizeRequest, CrawlArticleRequest
-from models.article import Article
-from services.crawl_news_service import NewsService
-from services.text_summarization import ArticleSummarizationService
+from app.models.response import APIResponse
+from app.schemas.article import SummarizeRequest, CrawlArticleRequest
+from app.models.article import Article
+from app.services.crawl_news_service import NewsService
+from app.services.text_summarization import ArticleSummarizationService
 
 router = APIRouter()
 

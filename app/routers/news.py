@@ -3,10 +3,10 @@ from typing import List
 import time
 
 # ✅ FIX: Import từ app.models và app.schemas
-from models.response import APIResponse
-from schemas.article import CrawlArticleRequest, CrawlRssRequest
-from models.article import Article
-from services.crawl_news_service import NewsService
+from app.models.response import APIResponse
+from app.schemas.article import CrawlArticleRequest, CrawlRssRequest
+from app.models.article import Article
+from app.services.crawl_news_service import NewsService
 
 router = APIRouter()
 

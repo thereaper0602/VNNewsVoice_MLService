@@ -2,10 +2,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 import urllib.parse
 
-from models.response import APIResponse
-from schemas.tts import TTSRequest, TTSResponse, TTSDeleteByUrlRequest
-from services.tts_service import ArticleTTSService
-from services.cloud_service import CloudStorageService
+from app.models.response import APIResponse
+from app.schemas.tts import TTSRequest, TTSResponse, TTSDeleteByUrlRequest
+from app.services.tts_service import ArticleTTSService
+from app.services.cloud_service import CloudStorageService
 
 router = APIRouter()
 

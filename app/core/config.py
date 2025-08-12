@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     # AI Keys
     GOOGLE_AI_API_KEY: Optional[str] = None
+    GOOGLE_AI_API_KEY_TS: Optional[str] = None
 
     # Cloudinary configuration
     CLOUDINARY_CLOUD_NAME: Optional[str] = None
