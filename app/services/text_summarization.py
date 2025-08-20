@@ -271,10 +271,18 @@ class ArticleSummarizationService:
             MODEL_ID = "gemini-1.5-flash"  # Model nhẹ hơn
             
             # Cải thiện prompt với thông tin NER
-            prompt = f"""Tóm tắt văn bản sau trong khoảng {max_length} từ, giữ lại thông tin quan trọng nhất.
+            prompt = f"""Ban là một chuyên gia trong việc tóm tắt tin tức. Tóm tắt văn bản sau trong khoảng {max_length} từ, giữ lại thông tin quan trọng nhất.
             
             Đặc biệt chú ý đến các đối tượng quan trọng sau đây trong văn bản:
             {entity_context}
+
+            Nếu không có các đối tượng quan trọng, hãy tóm tắt văn bản theo cách thông thường.
+
+            TUYỆT ĐỐI KHÔNG ĐƯỢC BỊA ĐẶT HAY NÓI BẤT CỨ THỨ GÌ KHÔNG CÓ TRONG BÀI BÁO.
+
+            TẤT CẢ THÔNG TIN ĐỀU PHẢI TỪ TIN TỨC MÀ RA.
+            
+            KHÔNG ĐƯỢC NÓI BẤT CỨ THỨ GÌ KHÔNG CÓ TRONG BÀI BÁO.
             
             Hãy đảm bảo tóm tắt nhấn mạnh các đối tượng quan trọng này (con người, tổ chức, địa điểm, sự kiện).
             Viết tóm tắt ngắn gọn, súc tích, dễ hiểu, đủ ý chính. Văn bản:
