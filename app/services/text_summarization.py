@@ -5,10 +5,9 @@ from datetime import datetime, timedelta
 import feedparser
 import time
 from time import mktime
-# ✅ FIX: Import từ app.models thay vì models
 from app.models.article import Article, ArticleBlock
 from app.models.response import APIResponse
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 import pytz
 import re
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
@@ -23,6 +22,7 @@ import cloudinary.uploader
 import uuid
 import json
 from app.core.config import settings
+from huggingface_hub import InferenceClient
 
 class ArticleSummarizationService:
     # 🔧 Lazy loading - chỉ load khi cần
@@ -30,6 +30,8 @@ class ArticleSummarizationService:
     _model = None
     _device = None
     _summary_cache = {}
+    _ner_cache = {}
+    _ner_client = None
     
     @classmethod
     def _load_model(cls):
@@ -39,7 +41,6 @@ class ArticleSummarizationService:
             cls._device = torch.device("cpu")
             cls._tokenizer = AutoTokenizer.from_pretrained("VietAI/vit5-base-vietnews-summarization")
             cls._model = AutoModelForSeq2SeqLM.from_pretrained("VietAI/vit5-base-vietnews-summarization")
-            # Load quantized model
             quantization_config = torch.quantization.quantize_dynamic(
                 {torch.nn.Linear}, dtype=torch.qint8
             )
@@ -49,6 +50,19 @@ class ArticleSummarizationService:
                 quantization_config=quantization_config,
                 low_cpu_mem_usage=True
             )
+    
+    @classmethod
+    def _get_ner_client(cls):
+        """Khởi tạo client cho NER API"""
+        if cls._ner_client is None:
+            print("🤖 Initializing NER client...")
+            # Lấy API key từ settings nếu có
+            api_key = getattr(settings, "HUGGINGFACE_API_KEY", "")
+            cls._ner_client = InferenceClient(
+                provider="hf-inference",
+                api_key=api_key
+            )
+        return cls._ner_client
     
     @classmethod
     def chunk_text(cls, text: str, max_tokens: int = 512) -> List[str]:
@@ -82,10 +96,128 @@ class ArticleSummarizationService:
             chunks.append(current_chunk.strip())
         
         return chunks
+    
+    @classmethod
+    def chunk_text_for_ner(cls, text: str, max_chars: int = 1800) -> List[str]:
+        """Chia text thành chunks phù hợp với NER model (max 512 tokens)"""
+        # Cắt câu theo ., !, ? và cả dấu kết thúc kiểu tiếng Việt
+        parts = re.split(r'([.!?。]+)', text)
+        # Ghép lại để không mất dấu chấm câu
+        sentences = []
+        for i in range(0, len(parts), 2):
+            sent = parts[i].strip()
+            punct = parts[i+1] if i+1 < len(parts) else ""
+            if sent:
+                sentences.append((sent + punct).strip())
+
+        chunks = []
+        current = ""
+        for sent in sentences:
+            if current and len(current) + 1 + len(sent) > max_chars:
+                chunks.append(current)
+                current = sent
+            else:
+                current = sent if not current else (current + " " + sent)
+        if current:
+            chunks.append(current)
+        return chunks
+    
+    @classmethod
+    def process_ner(cls, text: str) -> List[Dict[str, Any]]:
+        """Xử lý NER cho văn bản, hỗ trợ chunking cho văn bản dài"""
+        # Check cache trước
+        cache_key = hashlib.md5(text[:1000].encode()).hexdigest()
+        if cache_key in cls._ner_cache:
+            print("✅ Using cached NER results")
+            return cls._ner_cache[cache_key]
+        
+        # Khởi tạo client nếu chưa có
+        client = cls._get_ner_client()
+        
+        # Chia text thành chunks nhỏ hơn để tránh vượt quá giới hạn token
+        chunks = cls.chunk_text_for_ner(text)
+        all_entities = []
+        offset = 0
+        
+        for i, chunk in enumerate(chunks):
+            try:
+                print(f"🔍 Processing NER for chunk {i+1}/{len(chunks)}...")
+                
+                # Gọi API NER
+                results = client.token_classification(
+                    chunk,
+                    model="NlpHUST/ner-vietnamese-electra-base"
+                )
+                
+                # Điều chỉnh vị trí về theo văn bản gốc
+                for entity in results:
+                    entity["start"] += offset
+                    entity["end"] += offset
+                    all_entities.append(entity)
+                    
+            except Exception as e:
+                print(f"⚠️ NER error for chunk {i+1}: {str(e)}")
+                continue
+                
+            # Cập nhật offset cho chunk tiếp theo
+            offset += len(chunk) + 1  # +1 cho khoảng trắng
+        
+        # Sắp xếp và gộp các entity liên tiếp cùng loại
+        all_entities.sort(key=lambda x: (x.get("start", 0), x.get("end", 0)))
+        merged_entities = cls._merge_consecutive_entities(all_entities)
+        
+        # Lưu vào cache
+        cls._ner_cache[cache_key] = merged_entities
+        
+        return merged_entities
+    
+    @classmethod
+    def _merge_consecutive_entities(cls, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Gộp các entity liên tiếp cùng loại"""
+        if not entities:
+            return entities
+            
+        merged = []
+        current = entities[0].copy()
+        
+        for entity in entities[1:]:
+            # Nếu entity liền kề và cùng loại, gộp lại
+            if (entity.get("start") == current.get("end") and 
+                entity.get("entity_group") == current.get("entity_group")):
+                current["end"] = entity["end"]
+                current["word"] = current.get("word", "") + entity.get("word", "")
+                # Lấy score cao hơn
+                current["score"] = max(current.get("score", 0), entity.get("score", 0))
+            else:
+                merged.append(current)
+                current = entity.copy()
+                
+        merged.append(current)
+        return merged
+    
+    @classmethod
+    def extract_important_entities(cls, entities: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+        """Trích xuất các entity quan trọng theo loại"""
+        entity_groups = {}
+        
+        # Lọc entity có score cao và phân loại
+        for entity in entities:
+            if entity.get("score", 0) >= 0.7:  # Chỉ lấy entity có độ tin cậy cao
+                group = entity.get("entity_group", "OTHER")
+                word = entity.get("word", "").strip()
+                
+                if group not in entity_groups:
+                    entity_groups[group] = []
+                    
+                # Chỉ thêm nếu chưa có trong danh sách
+                if word and word not in entity_groups[group]:
+                    entity_groups[group].append(word)
+        
+        return entity_groups
 
     @classmethod
     def summarize_text(cls, text: str, max_length: int = 150) -> str:
-        """Tóm tắt text với API first, model fallback"""
+        """Tóm tắt text với API first, model fallback, tích hợp NER"""
         # Generate cache key để tránh gọi API lặp lại
         cache_key = hashlib.md5(text[:1000].encode()).hexdigest()
         
@@ -98,6 +230,24 @@ class ArticleSummarizationService:
         cleaned_text = re.sub(r'\s+', ' ', text.strip())
         if len(cleaned_text) < 50:
             return "Nội dung quá ngắn để tóm tắt"
+        
+        # Xử lý NER để trích xuất thông tin quan trọng
+        try:
+            print("🔍 Extracting named entities...")
+            entities = cls.process_ner(cleaned_text)
+            important_entities = cls.extract_important_entities(entities)
+            
+            # Tạo context từ các entity quan trọng
+            entity_context = ""
+            for group, words in important_entities.items():
+                if words:
+                    entity_context += f"{group}: {', '.join(words[:5])}. "
+            
+            print(f"✅ Extracted entities: {entity_context}")
+        except Exception as ner_error:
+            print(f"⚠️ NER extraction error: {str(ner_error)}")
+            entity_context = ""
+            important_entities = {}
         
         # 1. Thử dùng Gemini API
         try:
@@ -120,7 +270,13 @@ class ArticleSummarizationService:
             client = genai.Client(api_key=api_key)
             MODEL_ID = "gemini-1.5-flash"  # Model nhẹ hơn
             
-            prompt = f"""Tóm tắt văn bản sau trong khoảng {max_length} từ, giữ lại thông tin quan trọng nhất. 
+            # Cải thiện prompt với thông tin NER
+            prompt = f"""Tóm tắt văn bản sau trong khoảng {max_length} từ, giữ lại thông tin quan trọng nhất.
+            
+            Đặc biệt chú ý đến các đối tượng quan trọng sau đây trong văn bản:
+            {entity_context}
+            
+            Hãy đảm bảo tóm tắt nhấn mạnh các đối tượng quan trọng này (con người, tổ chức, địa điểm, sự kiện).
             Viết tóm tắt ngắn gọn, súc tích, dễ hiểu, đủ ý chính. Văn bản:
             
             {cleaned_text}"""
@@ -165,6 +321,10 @@ class ArticleSummarizationService:
                     try:
                         print(f"📝 Summarizing chunk {i+1}/{len(chunks)} with local model...")
                         
+                        # Thêm entity context vào chunk nếu là chunk đầu tiên
+                        if i == 0 and entity_context:
+                            chunk = f"Thông tin quan trọng: {entity_context}. {chunk}"
+                        
                         inputs = cls._tokenizer(
                             chunk, 
                             return_tensors="pt", 
@@ -205,8 +365,18 @@ class ArticleSummarizationService:
                 final_summary = " ".join(summaries)
                 final_summary = re.sub(r'\s+', ' ', final_summary).strip()
                 
+                # Hậu xử lý để đảm bảo các entity quan trọng được nhấn mạnh
+                if important_entities:
+                    # Thêm thông tin về các entity quan trọng nếu chưa có trong tóm tắt
+                    for group, words in important_entities.items():
+                        if group in ["PERSON", "ORGANIZATION", "LOCATION", "MISCELLANEOUS"]:
+                            for word in words[:3]:  # Chỉ lấy 3 entity quan trọng nhất mỗi loại
+                                if word and len(word) > 1 and word not in final_summary:
+                                    # Thêm vào đầu tóm tắt
+                                    final_summary = f"{word} ({group}): {final_summary}"
+                                    break
+                
                 print(f"✅ Local model summary: {len(final_summary)} chars")
-                # Lưu vào cache
                 cls._summary_cache[cache_key] = final_summary
                 return final_summary
                 
@@ -236,10 +406,14 @@ class ArticleSummarizationService:
         """Clear cache entries older than max_age_minutes"""
         if not hasattr(cls, "_cache_timestamps"):
             cls._cache_timestamps = {}
+        if not hasattr(cls, "_ner_cache_timestamps"):
+            cls._ner_cache_timestamps = {}
         
         current_time = datetime.now()
-        expired_keys = []
+        expired_summary_keys = []
+        expired_ner_keys = []
         
+        # Xử lý cache tóm tắt
         for key in cls._summary_cache:
             if key not in cls._cache_timestamps:
                 cls._cache_timestamps[key] = current_time
@@ -249,19 +423,39 @@ class ArticleSummarizationService:
             age = current_time - timestamp
             
             if age > timedelta(minutes=max_age_minutes):
-                expired_keys.append(key)
+                expired_summary_keys.append(key)
         
-        for key in expired_keys:
+        # Xử lý cache NER
+        for key in cls._ner_cache:
+            if key not in cls._ner_cache_timestamps:
+                cls._ner_cache_timestamps[key] = current_time
+                continue
+                
+            timestamp = cls._ner_cache_timestamps[key]
+            age = current_time - timestamp
+            
+            if age > timedelta(minutes=max_age_minutes):
+                expired_ner_keys.append(key)
+        
+        # Xóa các cache hết hạn
+        for key in expired_summary_keys:
             if key in cls._summary_cache:
                 del cls._summary_cache[key]
             if key in cls._cache_timestamps:
                 del cls._cache_timestamps[key]
+                
+        for key in expired_ner_keys:
+            if key in cls._ner_cache:
+                del cls._ner_cache[key]
+            if key in cls._ner_cache_timestamps:
+                del cls._ner_cache_timestamps[key]
         
-        print(f"🧹 Cleared {len(expired_keys)} old cache entries")
+        print(f"🧹 Cleared {len(expired_summary_keys)} old summary cache entries")
+        print(f"🧹 Cleared {len(expired_ner_keys)} old NER cache entries")
 
     @classmethod
     def summarize_article(cls, article: Article, max_length: int = 200) -> str:
-        """Tóm tắt Article object"""
+        """Tóm tắt Article object với nhấn mạnh các đối tượng quan trọng"""
         if not article.blocks:
             return "Không có nội dung để tóm tắt"
         
@@ -293,5 +487,7 @@ class ArticleSummarizationService:
         if cls._tokenizer is not None:
             del cls._tokenizer
             cls._tokenizer = None
+        if cls._ner_client is not None:
+            cls._ner_client = None
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
         print("🧹 Model cleaned up")

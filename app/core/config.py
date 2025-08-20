@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
 
+    # Huggingface API key
+    HUGGINGFACE_API_KEY: Optional[str] = None
+
+
     # Allowed hosts for CORS
     ALLOWED_HOSTS: List[str] = [
         "http://localhost:3000",
@@ -54,7 +58,7 @@ class Settings(BaseSettings):
         
         # Check if API key loaded
         if self.GOOGLE_AI_API_KEY:
-            print(f"✅ GOOGLE_AI_API_KEY loaded: {self.GOOGLE_AI_API_KEY[:20]}...{self.GOOGLE_AI_API_KEY[-4:]}")
+            print(f"✅ GOOGLE_AI_API_KEY loaded: {self.GOOGLE_AI_API_KEY[:10]}...{self.GOOGLE_AI_API_KEY[-4:]}")
         else:
             print("❌ GOOGLE_AI_API_KEY not loaded!")
 
