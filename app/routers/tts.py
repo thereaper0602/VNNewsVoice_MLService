@@ -6,6 +6,7 @@ from app.models.response import APIResponse
 from app.schemas.tts import TTSRequest, TTSResponse, TTSDeleteByUrlRequest
 from app.services.tts_service import ArticleTTSService
 from app.services.cloud_service import CloudStorageService
+from app.services.aws_storage_service import S3StorageService
 
 router = APIRouter()
 
@@ -35,14 +36,14 @@ async def text_to_speech_direct(request: TTSRequest):
 
 @router.post("/tts/upload", response_model=APIResponse)
 async def text_to_speech_with_upload(request: TTSRequest):
-    """Generate TTS and upload to cloud, return URL"""
+    """Generate TTS and upload to AWS S3, return URL"""
     try:
-        print(f"🚀 TTS with cloud upload: {len(request.text)} chars, voice: {request.voice_name}")
+        print(f"🚀 TTS with S3 upload: {len(request.text)} chars, voice: {request.voice_name}")
         
         result = ArticleTTSService.generate_tts_with_upload(request.text, request.voice_name)
         
         if not result:
-            raise HTTPException(status_code=500, detail="Failed to generate TTS or upload to cloud")
+            raise HTTPException(status_code=500, detail="Failed to generate TTS or upload to S3")
         
         tts_response = TTSResponse(
             audio_url=result["audio_url"],
@@ -51,37 +52,58 @@ async def text_to_speech_with_upload(request: TTSRequest):
             text_length=result["text_length"],
             filename=result["filename"],
             upload_timestamp=result["upload_timestamp"],
-            cloud_provider=result.get("cloud_provider", "cloudinary"),
+            cloud_provider=result.get("cloud_provider", "aws_s3"),
             public_id=result.get("public_id")
         )
         
         return APIResponse(
             success=True,
             data=[tts_response.model_dump()],
-            message="TTS generated and uploaded successfully"
+            message="TTS generated and uploaded to S3 successfully"
         )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing TTS upload: {str(e)}")
 
-@router.delete("/tts/delete/{public_id}")
-async def delete_tts_audio(public_id: str):
-    """Delete audio file from cloud storage"""
+@router.delete("/tts/delete/{filename}")
+async def delete_tts_audio(filename: str):
+    """Delete audio file from S3 storage"""
     try:
-        decoded_public_id = urllib.parse.unquote(public_id)
-        success = CloudStorageService.delete_audio(decoded_public_id)
-        
+        decoded_filename = urllib.parse.unquote(filename)
+        s3_service = S3StorageService()
+        success = s3_service.delete_audio(decoded_filename)
+
         if success:
             return APIResponse(
                 success=True,
-                data=[{"public_id": decoded_public_id, "deleted": True}],
-                message="Audio file deleted successfully"
+                data=[{"filename": decoded_filename, "deleted": True}],
+                message="Audio file deleted successfully from S3"
             )
         else:
             raise HTTPException(status_code=404, detail="Audio file not found or delete failed")
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting audio: {str(e)}")
+
+# @router.delete("/tts/delete/{public_id}")
+# async def delete_tts_audio(public_id: str):
+#     """Delete audio file from cloud storage"""
+#     try:
+#         decoded_public_id = urllib.parse.unquote(public_id)
+#         # success = CloudStorageService.delete_audio(decoded_public_id)
+#         success = S3StorageService.delete_audio(decoded_public_id)
+
+#         if success:
+#             return APIResponse(
+#                 success=True,
+#                 data=[{"public_id": decoded_public_id, "deleted": True}],
+#                 message="Audio file deleted successfully"
+#             )
+#         else:
+#             raise HTTPException(status_code=404, detail="Audio file not found or delete failed")
+            
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error deleting audio: {str(e)}")
 
 @router.get("/tts/voices")
 async def get_available_voices():
@@ -100,58 +122,30 @@ async def get_available_voices():
     )
 
 
-# routers/tts.py - Enhanced delete endpoint
-
 @router.delete("/tts/delete-by-url", response_model=APIResponse)
 async def delete_tts_audio_by_url(request: dict):
-    """Delete audio file from cloud storage using URL"""
+    """Delete audio file from S3 using URL"""
     try:
         audio_url = request.get("audio_url", "").strip()
         
         if not audio_url:
             raise HTTPException(status_code=400, detail="Audio URL is required")
         
-        # Method 1: Extract public ID and try variations
-        public_id = CloudStorageService.extract_public_id_from_url(audio_url)
-        
-        if public_id:
-            print(f"🔧 Method 1: Trying delete with extracted public_id: {public_id}")
-            success = CloudStorageService.delete_audio(public_id)
-            
-            if success:
-                return APIResponse(
-                    success=True,
-                    data=[{
-                        "audio_url": audio_url,
-                        "public_id": public_id,
-                        "deleted": True,
-                        "method": "extracted_public_id"
-                    }],
-                    message="Audio file deleted successfully"
-                )
-        
-        # Method 2: Search by filename pattern
-        filename = audio_url.split('/')[-1].split('.')[0]  # Get filename without extension
-        print(f"🔧 Method 2: Trying search and delete with filename: {filename}")
-        
-        success = CloudStorageService.search_and_delete_audio(filename)
+        s3_service = S3StorageService()
+        success = s3_service.delete_audio_by_url(audio_url)
         
         if success:
             return APIResponse(
                 success=True,
                 data=[{
                     "audio_url": audio_url,
-                    "public_id": filename,
                     "deleted": True,
-                    "method": "search_and_delete"
+                    "cloud_provider": "aws_s3"
                 }],
-                message="Audio file found and deleted successfully"
+                message="Audio file deleted successfully from S3"
             )
-        
-        # If both methods fail
-        raise HTTPException(status_code=404, detail="Audio file not found or delete failed")
+        else:
+            raise HTTPException(status_code=404, detail="Audio file not found or delete failed")
             
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting audio: {str(e)}")

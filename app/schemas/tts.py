@@ -1,4 +1,3 @@
-# app/schemas/tts.py
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
@@ -17,10 +16,10 @@ class TTSResponse(BaseModel):
     public_id: Optional[str] = None
 
 class TTSDeleteRequest(BaseModel):
-    public_id: str = Field(..., description="Cloud storage public ID to delete")
+    public_id: str = Field(..., description="Cloud storage public ID/filename to delete")
 
 class TTSDeleteByUrlRequest(BaseModel):
-    audio_url: str = Field(..., description="Cloudinary audio URL to delete")
+    audio_url: str = Field(..., description="Audio URL to delete")
     
     @field_validator('audio_url')
     @classmethod
@@ -28,7 +27,8 @@ class TTSDeleteByUrlRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Audio URL cannot be empty")
         
-        if "cloudinary.com" not in v:
-            raise ValueError("Must be a Cloudinary URL")
+        # Support both Cloudinary and S3 URLs
+        if not any(domain in v for domain in ["cloudinary.com", "amazonaws.com"]):
+            raise ValueError("Must be a valid cloud storage URL (Cloudinary or AWS S3)")
         
         return v.strip()
