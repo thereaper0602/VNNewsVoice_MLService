@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import feedparser
 import time
 from time import mktime
-# ✅ FIX: Import từ app.models thay vì models
 from app.models.article import Article, ArticleBlock
 from app.models.response import APIResponse
 from typing import List, Optional, Union
@@ -22,6 +21,9 @@ import cloudinary.uploader
 import uuid
 import json
 from app.core.config import settings
+import boto3
+from botocore.exceptions import NoCredentialsError
+from app.services.aws_storage_service import S3StorageService
 
 class ArticleTTSService:
     @staticmethod
@@ -34,7 +36,6 @@ class ArticleTTSService:
             
     @staticmethod
     def test_tts_with_short_text() -> Optional[bytes]:
-        """Thử nghiệm TTS với đoạn văn bản ngắn để debug"""
         short_text = "Đây là bản tin thời sự. Xin chào quý vị và các bạn."
         return ArticleTTSService.generate_tts(short_text, "Zephyr")
 
@@ -100,9 +101,57 @@ class ArticleTTSService:
             import traceback
             traceback.print_exc()
             return None
-    
+        
+
     @staticmethod
     def generate_tts_with_upload(text: str, voice_name: str = "Zephyr") -> Optional[dict]:
+        """Generate TTS and upload to AWS S3 (updated to use S3 instead of Cloudinary)"""
+        try:
+            # Generate TTS audio data
+            audio_data = ArticleTTSService.generate_tts(text, voice_name)
+            if not audio_data:
+                return None
+            
+            # Create S3 storage service
+            s3_service = S3StorageService()
+            
+            # Create filename with timestamp
+            timestamp = int(time.time())
+            filename = f"tts_{timestamp}_{voice_name.lower()}.wav"
+            
+            # Upload to S3
+            upload_result = s3_service.upload_audio(audio_data, filename)
+            print(upload_result)
+            
+            if not upload_result or upload_result.get('status') != 'success':
+                print("❌ Upload failed")
+                return None
+            
+            # Format result to match expected schema
+            result = {
+                "status": "success",
+                "audio_url": upload_result["audio_url"],
+                "audio_size": len(audio_data),
+                "voice_name": voice_name,
+                "text_length": len(text),
+                "filename": filename,
+                "upload_timestamp": upload_result.get("created_at", datetime.now().isoformat()),
+                "cloud_provider": "aws_s3",
+                "public_id": filename  # Use filename as public_id for S3
+            }
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ TTS upload error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+        
+    
+    @staticmethod
+    def generate_tts_with_upload_aws(text : str, voice_name : str = "Zephyr") -> Optional[dict]:
         try:
             # Load environment variables if not already loaded
             env_path = Path(__file__).parent.parent.parent / ".env"
@@ -166,7 +215,7 @@ class ArticleTTSService:
         except Exception as e:
             print(f"❌ TTS upload error: {e}")
             return None
-
+        
     @staticmethod
     def _pcm_to_wav(pcm_data: bytes, channels: int = 1, sample_rate: int = 24000, sample_width: int = 2) -> bytes:
         """Convert raw PCM data to WAV format"""

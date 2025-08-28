@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Huggingface API key
     HUGGINGFACE_API_KEY: Optional[str] = None
 
+    # AWS S3
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: Optional[str] = None
+    S3_BUCKET_NAME: Optional[str] = None
 
     # Allowed hosts for CORS
     ALLOWED_HOSTS: List[str] = [
@@ -67,6 +72,12 @@ class Settings(BaseSettings):
             print(f"☁️ Cloudinary config loaded: {self.CLOUDINARY_CLOUD_NAME}")
         else:
             print("⚠️ Cloudinary credentials not found")
+
+        # Check AWS S3 config
+        if all([self.AWS_ACCESS_KEY_ID, self.AWS_SECRET_ACCESS_KEY, self.AWS_REGION, self.S3_BUCKET_NAME]):
+            print(f"☁️ AWS S3 config loaded: {self.S3_BUCKET_NAME}")
+        else:
+            print("⚠️ AWS S3 credentials not found")
 
     class Config:
         env_file = str(ENV_FILE)  # Đường dẫn tuyệt đối tới .env
