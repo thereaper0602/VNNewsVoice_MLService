@@ -151,7 +151,7 @@ class ArticleTTSService:
         
     
     @staticmethod
-    def generate_tts_with_upload_aws(text : str, voice_name : str = "Zephyr") -> Optional[dict]:
+    def generate_tts_with_upload_cloudinary(text: str, voice_name: str = "Zephyr") -> Optional[dict]:
         try:
             # Load environment variables if not already loaded
             env_path = Path(__file__).parent.parent.parent / ".env"
