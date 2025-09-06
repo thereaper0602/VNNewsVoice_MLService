@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 import time
 
-# ✅ FIX: Import từ app.models và app.schemas
 from app.models.response import APIResponse
 from app.schemas.article import CrawlArticleRequest, CrawlRssRequest
 from app.models.article import Article
@@ -56,7 +55,7 @@ async def crawl_rss_feed(request: CrawlRssRequest):
 
 @router.get("/crawl/vietnamese-news", response_model=APIResponse)
 async def crawl_vietnamese_news(max_articles: int = 5):
-    """Crawl latest news from major Vietnamese news sources"""
+    """Lấy tin tức từ các nguồn báo chí Việt Nam phổ biến"""
     vietnamese_rss_feeds = {
         "vnexpress": "https://vnexpress.net/rss/tin-moi-nhat.rss",
         "thanhnien": "https://thanhnien.vn/rss/home.rss",

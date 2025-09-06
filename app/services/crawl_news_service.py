@@ -90,10 +90,10 @@ class NewsService:
             title_tag = soup.select_one(selector)
             if title_tag:
                 title = title_tag.get_text(strip=True)
-                if title and len(title) > 5:  # Ensure it's a real title
+                if title and len(title) > 5:
                     break
 
-        # 📄 EXTRACT CONTENT
+        # 📄 Trích xuất nội dung
         container = None
         content_selectors = [
             "div.detail-cmain",         # VNExpress
@@ -113,11 +113,11 @@ class NewsService:
         if not container:
             raise ValueError("Could not find article content container")
             
-        # Remove unwanted elements
+        # Bỏ các phần thẻ không cần thiết
         for unwanted in container.find_all(['script', 'style', 'iframe', 'ads']):
             unwanted.decompose()
-            
-        # Remove any unwanted related news sections
+
+        # Bỏ các phần liên quan đến tin tức không mong muốn
         for related_div in container.find_all('div', attrs={'type': 'RelatedOneNews'}):
             related_div.decompose()
             
@@ -131,7 +131,7 @@ class NewsService:
         for elem in container.find_all(['p', 'h1', 'h2', 'h3', 'figure','picture'], recursive=True):
             block_data = {"order": order}
             
-            if elem.name in ['h1', 'h2', 'h3']:
+            if elem.name in ['h1', 'h2', 'h3','h4','h5','h6']:
                 block_data['type'] = 'heading'
                 block_data['text'] = elem.get_text(strip=True)
                 block_data['tag'] = elem.name
@@ -139,7 +139,7 @@ class NewsService:
             elif elem.name == 'p':
                 if generator and generator.lower() == 'vnexpress' and elem.has_attr('class') and 'Normal' in elem['class']:
                     text = elem.get_text(strip=True)
-                    if text and text not in seen_paragraphs and text not in seen_figcaptions:
+                    if text and text not in seen_paragraphs and text not in seen_figcaptions: # Kiểm tra xem đoạn văn đã được thấy chưa
                         seen_paragraphs.add(text)
                         block_data['type'] = 'paragraph'
                         block_data['content'] = text
@@ -209,7 +209,7 @@ class NewsService:
                 raise ValueError("No entries found in the RSS feed")
                 
             articles = []
-            generator = feed.get('generator')
+            generator = feed.get('generator')  # Lấy thông tin generator từ feed
             count = 0
             
             # Parse last_crawl_time flexible
@@ -220,7 +220,7 @@ class NewsService:
                     break
                     
                 try:
-                    # 🔧 XỬ LÝ PUBLISHED DATE - SỬA LẠI
+                    # 🔧 XỬ LÝ PUBLISHED DATE
                     published_date = None
                     vietnam_tz = pytz.timezone('Asia/Ho_Chi_Minh')
                     
@@ -230,8 +230,6 @@ class NewsService:
                             from dateutil import parser
                             # dateutil parse trực tiếp từ string, giữ nguyên timezone
                             published_date = parser.parse(entry.published)
-                            print(f"📅 RAW RSS: {entry.published}")
-                            print(f"📅 PARSED: {published_date}")
                             
                             # Nếu đã có timezone, convert về Vietnam time
                             if published_date.tzinfo is not None:
@@ -267,7 +265,7 @@ class NewsService:
                         else:
                             print(f"✅ INCLUDE: Article is newer ({published_date} > {parsed_last_crawl_time})")
                     
-                    # Crawl article content
+                    # Lấy dữ liệu bài báo
                     title, first_image, blocks = NewsService.crawl_news_article(entry.link, generator=generator)
                     if not blocks:
                         print(f"❌ SKIP: No content extracted")
